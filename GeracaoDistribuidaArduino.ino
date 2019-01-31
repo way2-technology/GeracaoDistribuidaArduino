@@ -1,13 +1,15 @@
 #include <Wire.h>
 #include "rgb_lcd.h"
 
-#define PINO 9
+#define SAIDA_RAZAO_CICLICA 9
 #define TENSAO A0
 #define CORRENTE A1
 
 #define RESISTENCIA_1 1000.0f
 #define RESISTENCIA_2 110.0f
 #define DIVISOR_DE_TENSAO RESISTENCIA_1 / RESISTENCIA_2
+
+#define SAMPLE_COUNT 100
 
 template<class T> inline Print &operator <<(Print &obj, T arg) {
   obj.print(arg);
@@ -23,12 +25,12 @@ rgb_lcd lcd;
 float potenciaAnterior = 0.0f;
 int razaoCiclica = 100;
 int razaoCiclicaAnterior = 100;
-int step = 10;
+int step = 1;
 
 void setup() {
   TCCR1B = TCCR1B & 0b11111000 | 0X01; // Seta pinos 9 e 10 para 31250 Hz
 
-  pinMode(PINO, OUTPUT);
+  pinMode(SAIDA_RAZAO_CICLICA, OUTPUT);
   pinMode(TENSAO, INPUT);
   pinMode(CORRENTE, INPUT);
 
@@ -42,15 +44,14 @@ void setup() {
 }
 
 void loop() {
-  analogWrite(PINO, razaoCiclica);
-  delay(2000);
+  analogWrite(SAIDA_RAZAO_CICLICA, razaoCiclica);
 
-  float tensaoMapeada = map((float)analogRead(TENSAO), 0.0f, 1023.0f, 0.0f, 5.0f);
+  delay(1000);
+
+  float tensaoMapeada = readAverage(TENSAO, 0.0f, 5.0f);
   float tensao =  tensaoMapeada * DIVISOR_DE_TENSAO;
-  float corrente = map((float)analogRead(CORRENTE), 0.0f, 1023.0f, -30.0f, 30.0f);
+  float corrente = readAverage(CORRENTE, -30.0f, 30.0f);
   float potencia = tensao * corrente;
-
-  Serial << tensao << "V " << corrente << "a " << potencia << "W " << razaoCiclica << '\n';
 
   printInfoOnLcd(tensao, corrente, potencia, razaoCiclica);
 
@@ -65,20 +66,34 @@ void loop() {
   razaoCiclica = constrain(razaoCiclica, 0, 255);
 
   potenciaAnterior = potencia;
+  
+}
+
+float readAverage(int pin, float min, float max) {
+  float readings = 0;
+  for (int i = 0; i < SAMPLE_COUNT; i++) {
+    float mappedReading = map((float)analogRead(pin), 0.0f, 1023.0f, min, max);
+    readings += mappedReading;
+  }
+  return (float)(readings / SAMPLE_COUNT);
 }
 
 void printInfoOnLcd(float tensao, float corrente, float potencia, float razaoCiclica) {
+  float razaoCiclicaPorcentagem = 100.0f * (razaoCiclica / 255.0f);
+
+  Serial << tensao << "V " << corrente << "A " << potencia << "W " << razaoCiclicaPorcentagem << "%" << '\n';
+  
   lcd.clear();
 
   lcd.setCursor(0, 0);
   lcd.print(String(tensao) + String("V"));
   lcd.setCursor(9, 0);
-  lcd.print(String(corrente) + String("a"));
+  lcd.print(String(corrente) + String("A"));
 
   lcd.setCursor(0, 1);
   lcd.print(String(potencia) + String("W"));
   lcd.setCursor(9, 1);
-  lcd.print(razaoCiclica);
+  lcd.print(String(razaoCiclicaPorcentagem) + String("%"));
 }
 
 float map(float x, float inMin, float inMax, float outMin, float outMax) {
